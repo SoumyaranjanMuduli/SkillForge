@@ -1,0 +1,2 @@
+'use client'
+export function UserActions({userId,status}:{userId:string;status:string}){async function toggle(){const next=status==='disabled'?'active':'disabled';const r=await fetch('/api/admin/users',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({userId,status:next})});if(!r.ok){alert('Could not update user');return}location.reload()}return <button className="btn-secondary" onClick={()=>void toggle()}>{status==='disabled'?'Enable':'Disable'}</button>}

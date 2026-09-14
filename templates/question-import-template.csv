@@ -1,0 +1,2 @@
+question_id,program,topic,subtopic,title,question,question_type,difficulty,marks,time_limit_sec,instructions,choices,correct_answer,answer_key,grading_mode,starter_code,grader_config,explanation,tags,status
+SQL-001,SQL,Joins,LEFT JOIN,Unmatched customers,Write a SQL query to find customers with no orders.,sql,medium,10,300,Use LEFT JOIN.,,,SELECT ...,test_cases,,"{""tests"":[]}",LEFT JOIN preserves unmatched rows.,"joins,sql,beginner",draft

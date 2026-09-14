@@ -1,0 +1,13 @@
+'use client'
+
+import Link from 'next/link'
+import { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+
+const ADMIN_EMAIL='soumyaranjanliku16@gmail.com'
+
+export default function AdminLoginPage(){
+  const [email,setEmail]=useState(ADMIN_EMAIL); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false)
+  async function login(e:React.FormEvent){e.preventDefault();setError('');const normalized=email.trim().toLowerCase();if(normalized!==ADMIN_EMAIL)return setError('Admin access is restricted.');if(!process.env.NEXT_PUBLIC_SUPABASE_URL||!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)return setError('Authentication is not configured yet.');setBusy(true);const supabase=createClient();const {data,error}=await supabase.auth.signInWithPassword({email:normalized,password});if(error){setError('Email or password is incorrect.');setBusy(false);return}if(!data.user.email_confirmed_at){window.location.href=`/verify-email?email=${encodeURIComponent(normalized)}`;return}const {data:p}=await supabase.from('profiles').select('role,status').eq('id',data.user.id).maybeSingle();if(p?.role!=='admin'||p.status==='disabled'){await supabase.auth.signOut();setError('This account is not authorized for admin access.');setBusy(false);return}window.location.href='/admin/dashboard'}
+  return <main className="grid min-h-screen place-items-center bg-slate-950 px-5 py-10"><div className="w-full max-w-md"><Link href="/" className="text-lg font-black text-white">Skill<span className="text-violet-400">Forge</span></Link><div className="mt-8 rounded-3xl border border-white/10 bg-white p-7 shadow-2xl"><div className="badge-brand w-fit">Admin workspace</div><h1 className="mt-4 text-2xl font-black text-slate-900">Admin Login</h1><p className="mt-2 text-sm text-slate-500">Authorized administrator access only.</p><form onSubmit={login} className="mt-6 space-y-4"><label className="block"><span className="label">Admin email</span><input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} required /></label><label className="block"><span className="label">Password</span><input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></label>{error&&<div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">{error}</div>}<button className="btn-primary w-full" disabled={busy}>{busy?'Signing in…':'Sign in as admin'}</button></form><div className="mt-5 flex justify-between text-sm"><Link href="/admin/create-password" className="text-brand">First-time admin setup</Link><Link href="/forgot-password" className="text-slate-500">Forgot password?</Link></div></div></div></main>
+}
