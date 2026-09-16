@@ -38,7 +38,19 @@ export default function AccountSetupPage() {
     }
     setBusy(true)
     try {
-      const res = await fetch('/api/profile/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      const supabase = createClient()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !sessionData.session?.access_token) {
+        throw new Error('Your login session has expired. Please sign in again.')
+      }
+      const res = await fetch('/api/profile/setup', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        body: JSON.stringify(payload),
+      })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error ?? 'Could not save your profile.')
       window.location.href = '/dashboard'
