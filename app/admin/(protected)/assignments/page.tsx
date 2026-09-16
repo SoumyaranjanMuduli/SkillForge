@@ -1,0 +1,5 @@
+import {AppShell,PageTitle} from '@/components/AppShell'
+import {createAdminClient} from '@/lib/supabase/admin'
+import {requireAdmin} from '@/lib/auth'
+import {AssignmentForm} from './form'
+export default async function Assignments({ searchParams }: { searchParams?: Promise<{ assessment?: string }> }){await requireAdmin();const db=createAdminClient() as any;const [{data:assessments},{data:users}]=await Promise.all([db.from('assessments').select('id,name').order('name'),db.from('profiles').select('id,full_name').eq('status','active').order('full_name')]);const selectedAssessment=(await (searchParams??Promise.resolve({assessment:''}))).assessment??'';const visibleAssessments=selectedAssessment?(assessments??[]).filter((assessment:any)=>assessment.id===selectedAssessment):(assessments??[]);return <AppShell role="admin"><PageTitle eyebrow="Admin / Share assessment" title="Share with learners" desc="Choose the learners who should see this specific assessment in their account."/><AssignmentForm assessments={visibleAssessments} users={users??[]}/></AppShell>}
