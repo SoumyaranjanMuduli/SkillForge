@@ -1,36 +1,38 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { isTrustedMutationRequest } from '@/lib/request-security'
 
-const DEFAULT_NEXT = '/dashboard'
+const schema = z.object({
+  accessToken: z.string().min(1).max(16_384),
+  refreshToken: z.string().min(1).max(16_384),
+})
 
-function safeNext(value: string | null) {
-  if (!value) return DEFAULT_NEXT
-  return value.startsWith('/') && !value.startsWith('//') ? value : DEFAULT_NEXT
-}
-
-export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const code = url.searchParams.get('code')
-  const tokenHash = url.searchParams.get('token_hash')
-  const type = url.searchParams.get('type') as 'signup' | 'recovery' | 'email' | 'email_change' | null
-  const next = safeNext(url.searchParams.get('next'))
-
-  let supabase
-  try { supabase = await createClient() } catch {
-    return NextResponse.redirect(new URL('/login?error=auth_not_configured', url.origin))
+export async function POST(request: Request) {
+  if (!isTrustedMutationRequest(request)) {
+    return NextResponse.json({ error: 'Cross-origin request rejected.' }, { status: 403 })
   }
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (error) return NextResponse.redirect(new URL('/login?error=callback_failed', url.origin))
-    return NextResponse.redirect(new URL(next, url.origin))
+  const parsed = schema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid authentication session.' }, { status: 400 })
   }
 
-  if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
-    if (error) return NextResponse.redirect(new URL('/login?error=verification_failed', url.origin))
-    return NextResponse.redirect(new URL(next, url.origin))
-  }
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.setSession({
+      access_token: parsed.data.accessToken,
+      refresh_token: parsed.data.refreshToken,
+    })
 
-  return NextResponse.redirect(new URL('/login?error=invalid_callback', url.origin))
+    if (error || !data.session || !data.user) {
+      console.error('[auth/sync-session] session sync failed', error?.message)
+      return NextResponse.json({ error: 'Could not establish your secure session. Please sign in again.' }, { status: 401 })
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('[auth/sync-session] unexpected error', error)
+    return NextResponse.json({ error: 'Authentication is temporarily unavailable. Please try again.' }, { status: 503 })
+  }
 }

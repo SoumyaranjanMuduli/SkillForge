@@ -34,18 +34,30 @@ export function LoginForm({ configured }: { configured: boolean }) {
         window.location.assign(`/verify-email?email=${encodeURIComponent(data.user.email ?? email)}`)
         return
       }
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role,status,onboarding_complete')
-        .eq('id', data.user.id)
-        .maybeSingle()
-      if (profileError) throw profileError
-      if (profile?.status === 'disabled') {
-        await supabase.auth.signOut()
-        setError('This account has been disabled.')
-        return
+
+      if (!data.session?.access_token || !data.session.refresh_token) {
+        throw new Error('Secure session was not returned by authentication.')
       }
-      window.location.assign(profile?.role === 'admin' ? '/admin/dashboard' : profile?.onboarding_complete ? '/dashboard' : '/account/setup')
+
+      const syncResponse = await fetch('/api/auth/sync-session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token,
+        }),
+      })
+      const syncBody = await syncResponse.json().catch(() => ({}))
+      if (!syncResponse.ok) {
+        await supabase.auth.signOut()
+        throw new Error(syncBody.error ?? 'Could not establish your secure session.')
+      }
+
+      // Let the server/middleware determine the correct destination from the
+      // authenticated profile. This avoids a race between browser auth storage
+      // and the server-side Supabase cookie session.
+      window.location.assign('/')
     } catch (err) {
       setError(friendlyAuthError(err instanceof Error ? err.message : 'Sign-in failed.', 'We could not sign you in. Please try again.'))
     } finally {

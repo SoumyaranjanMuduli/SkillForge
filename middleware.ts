@@ -4,7 +4,7 @@ import { getSupabasePublicConfig } from '@/lib/supabase/config'
 import { applySecurityHeaders, buildCspHeader, isTrustedMutationRequest } from '@/lib/request-security'
 
 const publicPaths = new Set(['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/admin/login', '/admin/create-password', '/auth/callback'])
-const publicApiPaths = new Set(['/api/admin/setup'])
+const publicApiPaths = new Set(['/api/admin/setup', '/api/auth/sync-session'])
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
