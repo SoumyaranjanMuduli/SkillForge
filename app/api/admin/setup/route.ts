@@ -66,10 +66,7 @@ export async function POST(request: Request) {
 
   const currentUser = await getUser()
   if (currentUser?.email && isAuthorizedAdminEmail(currentUser.email)) {
-    return NextResponse.json({
-      error: 'Admin setup is already associated with this account. Use password recovery instead.',
-      mode: 'recovery',
-    }, { status: 409 })
+    return NextResponse.json({ ok: true, mode: 'recovery' })
   }
 
   const parsed = requestSchema.safeParse(await request.json().catch(() => null))
@@ -78,12 +75,12 @@ export async function POST(request: Request) {
   }
 
   const requestedEmail = parsed.data.email.toLowerCase()
-  if (requestedEmail !== adminEmail) {
+  if (requestedEmail !== adminEmail.toLowerCase()) {
     return NextResponse.json({ error: 'Admin setup is not available for this email.' }, { status: 403 })
   }
 
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
-  if (!(await enforceRateLimit(`admin-setup:${ip}:${adminEmail}`))) {
+  if (!(await enforceRateLimit(`admin-setup:${ip}:${adminEmail.toLowerCase()}`))) {
     return NextResponse.json(
       { error: 'Too many setup requests. Please try again later.' },
       { status: 429 },
@@ -94,18 +91,10 @@ export async function POST(request: Request) {
     const redirectTo = `${getAuthRedirectOrigin(request)}/auth/callback?next=/admin/create-password`
     const db = createAdminClient()
 
-<<<<<<< HEAD
-    // Existing Supabase Auth users cannot be invited again. In that case,
-    // return recovery mode so the browser sends the password-reset email.
-=======
-    // If the authorized email already has an Auth user, a second invitation
-    // will fail. Return recovery mode so the client can send a reset email.
->>>>>>> 0d5fcaa (fix: student and admin authentication flow)
     const { data: usersData, error: usersError } = await db.auth.admin.listUsers({
       page: 1,
       perPage: 1000,
     })
-<<<<<<< HEAD
 
     if (usersError) {
       console.error('[admin/setup] user lookup failed', usersError.message)
@@ -116,7 +105,7 @@ export async function POST(request: Request) {
     }
 
     const existingUser = usersData.users.find(
-      user => user.email?.trim().toLowerCase() === adminEmail,
+      user => user.email?.trim().toLowerCase() === adminEmail.toLowerCase(),
     )
 
     if (existingUser) {
@@ -139,8 +128,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // A concurrent signup may have created the user after listUsers().
-    // Fall back to recovery instead of returning the misleading setup error.
     if (isAlreadyRegistered(inviteError.message)) {
       return NextResponse.json({ ok: true, mode: 'recovery' })
     }
@@ -156,26 +143,5 @@ export async function POST(request: Request) {
       { error: 'We could not start admin setup. Please try again later.' },
       { status: 500 },
     )
-=======
-    if (usersError) {
-      console.error('[admin/setup] user lookup failed', usersError.message)
-      return NextResponse.json({ error: 'Could not verify the admin account. Please try again later.' }, { status: 500 })
-    }
-
-    const existingUser = usersData.users.find(
-      candidate => candidate.email?.trim().toLowerCase() === adminEmail.toLowerCase(),
-    )
-    if (existingUser) return NextResponse.json({ ok: true, mode: 'recovery' })
-
-    const { error } = await db.auth.admin.inviteUserByEmail(adminEmail, { redirectTo })
-    if (!error) return NextResponse.json({ ok: true, mode: 'invite' })
-    if (isRateLimited(error.message)) return NextResponse.json({ error: 'Email sending is temporarily rate-limited. Please try again.', retryable: true }, { status: 429 })
-    if (isAlreadyRegistered(error.message)) return NextResponse.json({ ok: true, mode: 'recovery' })
-    console.error('[admin/setup] invite failed', error.message)
-    return NextResponse.json({ error: 'We could not start admin setup. Please try again later.' }, { status: 500 })
-  } catch {
-    console.error('[admin/setup] unexpected error')
-    return NextResponse.json({ error: 'We could not start admin setup. Please try again later.' }, { status: 500 })
->>>>>>> 0d5fcaa (fix: student and admin authentication flow)
   }
 }
