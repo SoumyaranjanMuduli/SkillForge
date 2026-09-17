@@ -6,10 +6,25 @@ import { ArrowRight, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyAuthError } from '@/lib/auth-errors'
 
-export function LoginForm({ configured }: { configured: boolean }) {
+const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
+  auth_not_configured: 'Authentication is not configured for this deployment.',
+  callback_failed: 'That link has expired or was already used, or it was opened in a different browser/app than the one you requested it from. Please request a new reset link and open it in the same browser.',
+  verification_failed: 'That verification link has expired or was already used, or it was opened in a different browser/app than the one you requested it from. Please request a new link and open it in the same browser.',
+  invalid_callback: 'That link is invalid or incomplete. Please request a new one.',
+  disabled: 'This account has been disabled.',
+}
+
+function resolveInitialError(initialError?: string) {
+  if (!initialError) return ''
+  const [code, detail] = initialError.split('::')
+  const base = CALLBACK_ERROR_MESSAGES[code] ?? `Something went wrong. (${code})`
+  return detail ? `${base} [${detail}]` : base
+}
+
+export function LoginForm({ configured, initialError }: { configured: boolean; initialError?: string }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(resolveInitialError(initialError))
   const [loading, setLoading] = useState(false)
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -27,39 +42,39 @@ export function LoginForm({ configured }: { configured: boolean }) {
         password,
       })
       if (signInError || !data.user) {
-        setError(friendlyAuthError(signInError?.message ?? 'Sign-in failed.', 'We could not sign you in. Please check your credentials and try again.'))
+        const raw = signInError?.message ?? 'Sign-in failed.'
+        console.error('[login] signInWithPassword failed', signInError)
+        setError(`${friendlyAuthError(raw, 'We could not sign you in. Please check your credentials and try again.')} (${raw})`)
         return
       }
       if (!data.user.email_confirmed_at) {
         window.location.assign(`/verify-email?email=${encodeURIComponent(data.user.email ?? email)}`)
         return
       }
-
-      if (!data.session?.access_token || !data.session.refresh_token) {
-        throw new Error('Secure session was not returned by authentication.')
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role,status,onboarding_complete')
+        .eq('id', data.user.id)
+        .maybeSingle()
+      if (profileError) {
+        console.error('[login] profile lookup failed', profileError)
+        setError(`We could not sign you in. Please try again. (${profileError.message || profileError.code || 'profile lookup failed'})`)
+        return
       }
-
-      const syncResponse = await fetch('/api/auth/sync-session', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          accessToken: data.session.access_token,
-          refreshToken: data.session.refresh_token,
-        }),
-      })
-      const syncBody = await syncResponse.json().catch(() => ({}))
-      if (!syncResponse.ok) {
+      if (!profile) {
+        setError('We could not sign you in. Please try again. (no profile row found for this account)')
+        return
+      }
+      if (profile.status === 'disabled') {
         await supabase.auth.signOut()
-        throw new Error(syncBody.error ?? 'Could not establish your secure session.')
+        setError('This account has been disabled.')
+        return
       }
-
-      // Let the server/middleware determine the correct destination from the
-      // authenticated profile. This avoids a race between browser auth storage
-      // and the server-side Supabase cookie session.
-      window.location.assign('/')
+      window.location.assign(profile.role === 'admin' ? '/admin/dashboard' : profile.onboarding_complete ? '/dashboard' : '/account/setup')
     } catch (err) {
-      setError(friendlyAuthError(err instanceof Error ? err.message : 'Sign-in failed.', 'We could not sign you in. Please try again.'))
+      const raw = err instanceof Error ? err.message : String(err)
+      console.error('[login] unexpected error', err)
+      setError(`${friendlyAuthError(raw, 'We could not sign you in. Please try again.')} (${raw})`)
     } finally {
       setLoading(false)
     }
