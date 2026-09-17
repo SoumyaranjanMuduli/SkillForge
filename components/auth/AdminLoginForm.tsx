@@ -22,34 +22,22 @@ export function AdminLoginForm({ configured }: { configured: boolean }) {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: normalized, password })
       if (signInError || !data.user) throw new Error(signInError?.message || 'Sign-in failed.')
       if (!data.user.email_confirmed_at) { await supabase.auth.signOut(); window.location.assign(`/verify-email?email=${encodeURIComponent(normalized)}`); return }
-      if (!data.session?.access_token || !data.session.refresh_token) {
-        throw new Error('Secure session was not returned by authentication.')
-      }
-
-      const syncResponse = await fetch('/api/auth/sync-session', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          accessToken: data.session.access_token,
-          refreshToken: data.session.refresh_token,
-        }),
-      })
-      const syncBody = await syncResponse.json().catch(() => ({}))
-      if (!syncResponse.ok) {
-        await supabase.auth.signOut()
-        throw new Error(syncBody.error ?? 'Could not establish your secure session.')
-      }
-
-      const bootstrapResponse = await fetch('/api/admin/bootstrap', { method: 'POST', credentials: 'same-origin' })
-      const bootstrapBody = await bootstrapResponse.json().catch(() => ({}))
-      if (!bootstrapResponse.ok) {
-        await supabase.auth.signOut()
-        throw new Error(bootstrapBody.error ?? 'This account is not authorized for admin access.')
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('role,status').eq('id', data.user.id).maybeSingle()
+      if (profileError) console.error('[admin-login] profile lookup failed', profileError)
+      if (profile?.status === 'disabled') { await supabase.auth.signOut(); throw new Error('This account is not authorized for admin access.') }
+      if (profileError || profile?.role !== 'admin') {
+        const bootstrapResponse = await fetch('/api/admin/bootstrap', { method: 'POST' })
+        const bootstrapJson = await bootstrapResponse.json().catch(() => ({}))
+        if (!bootstrapResponse.ok) {
+          await supabase.auth.signOut()
+          throw new Error(bootstrapJson.error ? `This account is not authorized for admin access. (${bootstrapJson.error})` : 'This account is not authorized for admin access.')
+        }
       }
       window.location.assign('/admin/dashboard')
     } catch (err) {
-      setError(err instanceof Error && err.message.includes('not authorized') ? err.message : friendlyAuthError(err instanceof Error ? err.message : 'Sign-in failed.', 'Sign-in failed.'))
+      const raw = err instanceof Error ? err.message : String(err)
+      console.error('[admin-login] failed', err)
+      setError(err instanceof Error && err.message.includes('not authorized') ? err.message : `${friendlyAuthError(raw, 'Sign-in failed.')} (${raw})`)
     } finally { setBusy(false) }
   }
 
