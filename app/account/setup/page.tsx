@@ -26,6 +26,10 @@ export default function AccountSetupPage() {
       const n = String(data.user?.user_metadata?.full_name ?? '').trim()
       if (n) setName(n)
     })
+    if (sessionStorage.getItem('skillforge_profile_saved') === '1') {
+      sessionStorage.removeItem('skillforge_profile_saved')
+      setError('Your profile was saved successfully, but you were sent back to this page anyway. This is a routing bug, not a form problem — please screenshot this message and send it for a fix, then try Continue again.')
+    }
   }, [])
 
   async function submit(e: React.FormEvent) {
@@ -38,21 +42,10 @@ export default function AccountSetupPage() {
     }
     setBusy(true)
     try {
-      const supabase = createClient()
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !sessionData.session?.access_token) {
-        throw new Error('Your login session has expired. Please sign in again.')
-      }
-      const res = await fetch('/api/profile/setup', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${sessionData.session.access_token}`,
-        },
-        body: JSON.stringify(payload),
-      })
+      const res = await fetch('/api/profile/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error ?? 'Could not save your profile.')
+      sessionStorage.setItem('skillforge_profile_saved', '1')
       window.location.href = '/dashboard'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your profile.')
